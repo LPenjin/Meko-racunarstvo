@@ -146,7 +146,7 @@ class CompositeDomain(Domain):
 
     def indexOfElement(self, domainElementTest):
         if domainElementTest.getNumberOfComponents() != self.getNumberOfComponents():
-            return -1
+            return 0
         else:
             elements = list(product(*[[i for i in range(simpleDomain.getFirst(), simpleDomain.getLast())] for simpleDomain in
                         self.SimpleDomains]))
@@ -154,7 +154,7 @@ class CompositeDomain(Domain):
             for i, domainElement in enumerate(domainElements):
                 if domainElement.equals(domainElementTest):
                     return i
-            return -1
+            return 0
 
 
 class IFuzzySet(ABC):
@@ -170,24 +170,30 @@ class IFuzzySet(ABC):
 
 class IInitUnaryFunction(ABC):
 
+    def __init__(self, funct):
+        self.funct = funct
+
     def valueAt(self, e: int) -> float:
-        pass
+        return self.funct(e)
 
 
-class CalculatedFuzzySet(IDomain, IFuzzySet, IInitUnaryFunction):
+class CalculatedFuzzySet(IFuzzySet):
 
     def __init__(self, IDomain, IInitUnaryFunction):
         self.IDomain = IDomain
         self.IIinitUnaryFunction = IInitUnaryFunction
 
+    def __str__(self):
+        return "\n" + "\n".join([f"d({value})={self.valueAt(value):.6f}" for value in range(self.IDomain.getFirst(),
+                                                                                self.IDomain.getLast())])
     def getDomain(self):
-        pass
+        return self.IDomain
 
     def getValueAt(self, DomainElement):
         pass
 
     def valueAt(self, e: int) -> float:
-        pass
+        return self.IIinitUnaryFunction.valueAt(self.IDomain.indexOfElement(DomainElement.of(e)))
 
 
 class MutableFuzzySet(IFuzzySet):
@@ -199,7 +205,7 @@ class MutableFuzzySet(IFuzzySet):
         self.memberships = [0.0 for i in range(IDomain.getCardinality())]
 
     def __str__(self):
-        return "\n".join([f"d({i})={round(value, 6)}" for i, value in zip(range(self.IDomain.getFirst(),
+        return "\n" + "\n".join([f"d({i})={value:.6f}" for i, value in zip(range(self.IDomain.getFirst(),
                                                                                 self.IDomain.getLast()),self.memberships)])
 
     def set(self, domainElement, double):
@@ -210,58 +216,127 @@ class MutableFuzzySet(IFuzzySet):
         return self.IDomain
 
     def getValueAt(self, domainElement) -> float:
-        pass
+        return self.memberships[domainElement.getComponentValue()[0]]
 
 
-class StandardFuzzySets():
+class StandardFuzzySets:
 
     def __init__(self):
         pass
 
     @staticmethod
-    def IFuntion(a, b):
-        pass
+    def lFuntion(a, b):
+        def funct(x):
+            if x < a:
+                x = 0
+            elif x >= b:
+                x = 0
+            else:
+                x = (b-x) / (b-a)
+        return IInitUnaryFunction(funct)
 
     @staticmethod
     def gammaFunction(a, b):
-        pass
+        def funct(x):
+            if x < a:
+                x = 0
+            elif x >= b:
+                x = 0
+            else:
+                x = (x-a)/(b-a)
+            return x
+        return IInitUnaryFunction(funct)
 
     @staticmethod
     def lambdaFunction(a, b, c):
+        def funct(x):
+            if x < a:
+                x = 0.000000
+            elif x > c:
+                x = 0.000000
+            elif x <= b and x >= a:
+                x = (x-a)/(b-a)
+            else:
+                x = (c-x)/(c-a)
+            return x
+        return IInitUnaryFunction(funct)
+
+
+class IBinaryFunction(ABC):
+
+    def __init__(self):
         pass
 
-class Operations:
+    @abstractmethod
+    def valueAt(self, a, b):
+        pass
+
+
+class IUnaryFunction(ABC):
+
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def valueAt(self, a):
+        pass
+
+
+class Operations(IUnaryFunction, IBinaryFunction):
 
     def __init__(self):
         pass
 
     @staticmethod
-    def unaryOperation(IFuzzySet, IUnaryFunction):
-        pass
+    def unaryOperation(set1, function):
+        new_set = MutableFuzzySet(Domain.intRange(set1.getDomain().getFirst(), set1.getDomain().getLast()))
+        for i in range(set1.getDomain().getFirst(), set1.getDomain().getLast()):
+            new_set.set(DomainElement.of(i), function.valueAt(set1.getValueAt(DomainElement.of(i))))
+        return new_set
 
     @staticmethod
     def binaryOperation(IFuzzySet1, IFuzzySet2, IBinaryFunction):
-        pass
+        first = min(IFuzzySet1.getDomain().getFirst(), IFuzzySet2.getDomain().getFirst())
+        last = max(IFuzzySet1.getDomain().getLast(), IFuzzySet2.getDomain().getLast())
+        new_set = MutableFuzzySet(Domain.intRange(first, last))
+        for i in range(first, last):
+            new_set.set(DomainElement.of(i), IBinaryFunction.valueAt(IFuzzySet1.getValueAt(DomainElement.of(i)),
+                                                                     IFuzzySet2.getValueAt(DomainElement.of(i))))
+        return new_set
 
-    @staticmethod
-    def zadehNot():
-        pass
+    class zadehNot(IUnaryFunction):
 
-    @staticmethod
-    def zadehAnd():
-        pass
+        @staticmethod
+        def valueAt(a):
+            return 1 - a
 
-    @staticmethod
-    def zadehOr():
-        pass
+    class zadehAnd(IBinaryFunction):
 
-    @staticmethod
-    def hamacherTNorm(double: float):
-        pass
+        @staticmethod
+        def valueAt(a, b):
+            return min(a, b)
 
-    @staticmethod
-    def hamacherSNorm(double: float):
-        pass
+    class zadehOr(IBinaryFunction):
+
+        @staticmethod
+        def valueAt(a, b):
+            return max(a, b)
+
+    class hamacherTNorm(IBinaryFunction):
+
+        def __init__(self, v):
+            self.v = v
+
+        def valueAt(self, a, b):
+            return (a*b)/(self.v + (1-self.v)*(a+b-a*b))
+
+    class hamacherSNorm(IBinaryFunction):
+
+        def __init__(self, v):
+            self.v = v
+
+        def valueAt(self, a, b):
+            return (a+b-(2-self.v)*a*b)/(1-(1-self.v)*a*b)
 
 
 if __name__ == "__main__":
@@ -292,9 +367,18 @@ if __name__ == "__main__":
     print("Set1", set1)
 
     d2_F = Domain.intRange(-5, 6)
-    set2 = CalculatedFuzzySet(d2, StandardFuzzySets.lambdaFunction(
-                d2.indexOfElement(DomainElement.of(-4)),
-                d2.indexOfElement(DomainElement.of( 0)),
-                d2.indexOfElement(DomainElement.of( 4))
+    set2 = CalculatedFuzzySet(d2_F, StandardFuzzySets.lambdaFunction(
+                d2_F.indexOfElement(DomainElement.of(-4)),
+                d2_F.indexOfElement(DomainElement.of(0)),
+                d2_F.indexOfElement(DomainElement.of(4))
                 ))
+    print("Set2", set2)
 
+    notSet1 = Operations.unaryOperation(set1, Operations.zadehNot())
+    print("NotSet1", notSet1)
+
+    union = Operations.binaryOperation(set1, notSet1, Operations.zadehOr())
+    print("Union", union)
+
+    hinters = Operations.binaryOperation(set1, notSet1, Operations.hamacherTNorm(1.0))
+    print("Set1 intersection with notSet1 using parameterised Hamacher T norm with parameter 1.0:", hinters)
