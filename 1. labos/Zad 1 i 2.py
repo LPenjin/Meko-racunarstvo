@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from itertools import product
 from numpy import prod
+import numpy as np
 
 
 class DomainElement:
@@ -11,14 +12,14 @@ class DomainElement:
     def getNumberOfComponents(self) -> int:
         return len(self.values)
 
-    def getComponentValue(self) -> int:
-        return self.values
+    def getComponentValue(self, int) -> int:
+        return self.values[int]
 
     def hashCode(self) -> int:
         pass
 
     def equals(self, other) -> bool:
-        return other.getComponentValue() == self.getComponentValue()
+        return other.values == self.values
 
     def __str__(self):
         if len(self.values) == 1:
@@ -53,6 +54,14 @@ class IDomain(ABC):
     def elementForIndex(self, n: int):
         raise NotImplementedError
 
+    @abstractmethod
+    def __iter__(self):
+        pass
+
+    @abstractmethod
+    def __next__(self):
+        pass
+
 
 class Domain(IDomain):
 
@@ -83,6 +92,18 @@ class SimpleDomain(Domain):
 
     def __str__(self):
         return "\n".join(["Element domene: " + str(i) for i in range(self.first, self.last)])
+
+    def __iter__(self):
+        self.cur = self.first
+        return self
+
+    def __next__(self):
+        if self.cur < self.last:
+            x = DomainElement.of(self.cur)
+            self.cur += 1
+            return x
+        else:
+            raise StopIteration
 
     def getCardinality(self) -> int:
         return self.last - self.first
@@ -127,13 +148,25 @@ class CompositeDomain(Domain):
         cartesianProducts = list(product(*elements))
         return "\n".join(["Element domene: " + str(cartesianProduct) for cartesianProduct in cartesianProducts])
 
+    def __iter__(self):
+        self.cur = 0
+        return self
+
+    def __next__(self):
+        if self.cur < self.getCardinality():
+            x = DomainElement.of(*self.elementForIndex(self.cur).values)
+            self.cur += 1
+            return x
+        else:
+            raise StopIteration
+
     def iterator(self):
         pass
 
     def getCardinality(self):
         return prod([simpleDomain.getCardinality() for simpleDomain in self.SimpleDomains])
 
-    def getComponent(self, index: int):
+    def getComponent(self, index: int) -> IDomain:
         return self.SimpleDomains[index]
 
     def getNumberOfComponents(self) -> int:
@@ -160,7 +193,7 @@ class CompositeDomain(Domain):
 class IFuzzySet(ABC):
 
     @abstractmethod
-    def getDomain(self):
+    def getDomain(self) -> IDomain:
         pass
 
     @abstractmethod
@@ -205,8 +238,15 @@ class MutableFuzzySet(IFuzzySet):
         self.memberships = [0.0 for i in range(IDomain.getCardinality())]
 
     def __str__(self):
-        return "\n" + "\n".join([f"d({i})={value:.6f}" for i, value in zip(range(self.IDomain.getFirst(),
+        if self.IDomain.getNumberOfComponents() == 1:
+            return "\n" + "\n".join([f"d({i})={value:.6f}" for i, value in zip(range(self.IDomain.getFirst(),
                                                                                 self.IDomain.getLast()),self.memberships)])
+        else:
+            elements = [[i for i in range(self.IDomain.getComponent(simpleDomain_index).getFirst(),
+                                          self.IDomain.getComponent(simpleDomain_index).getLast())]
+                        for simpleDomain_index in range(self.IDomain.getNumberOfComponents())]
+            cartesianProducts = list(product(*elements))
+            return "\n".join([f"d{str(cartesianProduct)} = {membership:.6f}" for membership, cartesianProduct in zip(self.memberships, cartesianProducts)])
 
     def set(self, domainElement, double):
         if (index := self.IDomain.indexOfElement(domainElement)) != -1:
@@ -216,7 +256,7 @@ class MutableFuzzySet(IFuzzySet):
         return self.IDomain
 
     def getValueAt(self, domainElement) -> float:
-        return self.memberships[domainElement.getComponentValue()[0]]
+        return self.memberships[self.getDomain().indexOfElement(domainElement)]
 
 
 class StandardFuzzySets:
@@ -339,7 +379,77 @@ class Operations(IUnaryFunction, IBinaryFunction):
             return (a+b-(2-self.v)*a*b)/(1-(1-self.v)*a*b)
 
 
+class Relations:
+
+    @staticmethod
+    def isSymmetric(set1) -> bool:
+        if Relations.isUtimesURelation(set1):
+            arr = np.array(set1.memberships)
+            d = set1.getDomain().getComponent(0).getCardinality()
+            arr = arr.reshape(d, d)
+            if (arr==arr.T).all():
+                return True
+        return False
+
+
+    @staticmethod
+    def isReflexive(set1) -> bool:
+        if Relations.isUtimesURelation(set1):
+            arr = np.array(set1.memberships)
+            d = set1.getDomain().getComponent(0).getCardinality()
+            arr = arr.reshape(d, d)
+            for i in range(d):
+                if arr[i, i] != 1:
+                    return False
+            return True
+        return False
+
+    @staticmethod
+    def isMaxMinTransitive(set1) -> bool:
+        if Relations.isUtimesURelation(set1):
+            for i in range(set1.getDomain().getCardinality()):
+                element = set1.getDomain().elementForIndex(i)
+                set_range = range(set1.getDomain().getComponent(1).getFirst(), set1.getDomain().getComponent(1).getLast())
+                mins = [min(set1.getValueAt(DomainElement.of(element.getComponentValue(0), j)),
+                            set1.getValueAt(DomainElement.of(j, element.getComponentValue(1)))) for j in set_range]
+                if set1.getValueAt(element) < max(mins):
+                    return False
+            return True
+        return False
+
+    @staticmethod
+    def compositionOfBinaryRelations(set1, set2):
+        new_set = MutableFuzzySet(Domain.combine(set1.getDomain().getComponent(0), set2.getDomain().getComponent(1)))
+        element1 = range(set1.getDomain().getComponent(0).getFirst(), set1.getDomain().getComponent(0).getLast())
+        element2 = range(set2.getDomain().getComponent(1).getFirst(), set2.getDomain().getComponent(1).getLast())
+        element3 = range(set2.getDomain().getComponent(0).getFirst(), set2.getDomain().getComponent(0).getLast())
+        for x in element1:
+            for z in element2:
+                new_set.set(DomainElement.of(x, z),
+                            max([min(set1.getValueAt(DomainElement.of(x, y)),
+                                     set2.getValueAt(DomainElement.of(y, z)))
+                                 for y in element3]))
+        return new_set
+
+    @staticmethod
+    def isFuzzyEquivalence(set1):
+        return Relations.isUtimesURelation(set1) and Relations.isReflexive(set1) and Relations.isSymmetric(set1)\
+                                                 and Relations.isMaxMinTransitive(set1)
+
+    @staticmethod
+    def isUtimesURelation(set1):
+        if set1.getDomain().getNumberOfComponents() == 2:
+            domain1 = set1.getDomain().getComponent(0)
+            domain2 = set1.getDomain().getComponent(1)
+            if domain1.getCardinality() == domain2.getCardinality() and domain1.getFirst() == domain2.getFirst():
+                return True
+        return False
+
+
+
 if __name__ == "__main__":
+    #1. zadatak
+    #a)
     d1 = Domain.intRange(0, 5)
     print(d1)
     print(f"Kardinalitet domene je: {d1.getCardinality()}")
@@ -357,6 +467,7 @@ if __name__ == "__main__":
     print(d3.elementForIndex(14))
     print(d3.indexOfElement(DomainElement.of(4,1)))
 
+    #b)
     d = Domain.intRange(0, 11)
     set1 = MutableFuzzySet(d)
     set1.set(DomainElement.of(0), 1.0)
@@ -374,6 +485,7 @@ if __name__ == "__main__":
                 ))
     print("Set2", set2)
 
+    #c)
     notSet1 = Operations.unaryOperation(set1, Operations.zadehNot())
     print("NotSet1", notSet1)
 
@@ -382,3 +494,129 @@ if __name__ == "__main__":
 
     hinters = Operations.binaryOperation(set1, notSet1, Operations.hamacherTNorm(1.0))
     print("Set1 intersection with notSet1 using parameterised Hamacher T norm with parameter 1.0:", hinters)
+
+    #2. zadatak
+    #a)
+    u = Domain.intRange(1, 6)
+
+    u2 = Domain.combine(u, u)
+
+    r1 = MutableFuzzySet(u2)
+    r1.set(DomainElement.of(1,1), 1)
+    r1.set(DomainElement.of(2,2), 1)
+    r1.set(DomainElement.of(3,3), 1)
+    r1.set(DomainElement.of(4,4), 1)
+    r1.set(DomainElement.of(5,5), 1)
+    r1.set(DomainElement.of(3,1), 0.5)
+    r1.set(DomainElement.of(1,3), 0.5)
+
+    r2 = MutableFuzzySet(u2)
+    r2.set(DomainElement.of(1,1), 1)
+    r2.set(DomainElement.of(2,2), 1)
+    r2.set(DomainElement.of(3,3), 1)
+    r2.set(DomainElement.of(4,4), 1)
+    r2.set(DomainElement.of(5,5), 1)
+    r2.set(DomainElement.of(3,1), 0.5)
+    r2.set(DomainElement.of(1,3), 0.1)
+
+    r3 = MutableFuzzySet(u2)
+    r3.set(DomainElement.of(1, 1), 1)
+    r3.set(DomainElement.of(2, 2), 1)
+    r3.set(DomainElement.of(3, 3), 0.3)
+    r3.set(DomainElement.of(4, 4), 1)
+    r3.set(DomainElement.of(5, 5), 1)
+    r3.set(DomainElement.of(1, 2), 0.6)
+    r3.set(DomainElement.of(2, 1), 0.6)
+    r3.set(DomainElement.of(2, 3), 0.7)
+    r3.set(DomainElement.of(3, 2), 0.7)
+    r3.set(DomainElement.of(3, 1), 0.5)
+    r3.set(DomainElement.of(1, 3), 0.5)
+
+    r4 = MutableFuzzySet(u2)
+    r4.set(DomainElement.of(1, 1), 1)
+    r4.set(DomainElement.of(2, 2), 1)
+    r4.set(DomainElement.of(3, 3), 1)
+    r4.set(DomainElement.of(4, 4), 1)
+    r4.set(DomainElement.of(5, 5), 1)
+    r4.set(DomainElement.of(1, 2), 0.4)
+    r4.set(DomainElement.of(2, 1), 0.4)
+    r4.set(DomainElement.of(2, 3), 0.5)
+    r4.set(DomainElement.of(3, 2), 0.5)
+    r4.set(DomainElement.of(1, 3), 0.4)
+    r4.set(DomainElement.of(3, 1), 0.4)
+
+    test1 = Relations.isUtimesURelation(r1)
+    print("r1 je definiran nad UxU?", test1)
+
+    test2 = Relations.isSymmetric(r1)
+    print("r1 je simetrican", test2)
+
+    test3 = Relations.isSymmetric(r2)
+    print("r2 je simetrican", test3)
+
+    test4 = Relations.isReflexive(r1)
+    print("r1 je refleksivan", test4)
+
+    test5 = Relations.isReflexive(r3)
+    print("r3 je refleksivan", test5)
+
+    test6 = Relations.isMaxMinTransitive(r3)
+    print("r3 je tranzitivan", test6)
+
+    test7 = Relations.isMaxMinTransitive(r4)
+    print("r4 je tranzitivan", test7)
+
+    #b)
+    u1 = Domain.intRange(1, 5)
+    u2 = Domain.intRange(1, 4)
+    u3 = Domain.intRange(1, 5)
+
+    r1 = MutableFuzzySet(Domain.combine(u1, u2))
+    r1.set(DomainElement.of(1, 1), 0.3)
+    r1.set(DomainElement.of(1, 2), 1)
+    r1.set(DomainElement.of(3, 3), 0.5)
+    r1.set(DomainElement.of(4, 3), 0.5)
+
+    r2 = MutableFuzzySet(Domain.combine(u2, u3))
+    r2.set(DomainElement.of(1, 1), 1)
+    r2.set(DomainElement.of(2, 1), 0.5)
+    r2.set(DomainElement.of(2, 2), 0.7)
+    r2.set(DomainElement.of(3, 3), 1)
+    r2.set(DomainElement.of(3, 4), 0.4)
+
+    r1r2 = Relations.compositionOfBinaryRelations(r1, r2)
+    #print("r1r2", r1r2)
+
+    for e in r1r2.getDomain():
+        print(f"m({e})={r1r2.getValueAt(e)}")
+
+    #c)
+    u = Domain.intRange(1, 5)
+
+    r = MutableFuzzySet(Domain.combine(u, u))
+    r.set(DomainElement.of(1, 1), 1)
+    r.set(DomainElement.of(2, 2), 1)
+    r.set(DomainElement.of(3, 3), 1)
+    r.set(DomainElement.of(4, 4), 1)
+    r.set(DomainElement.of(1, 2), 0.3)
+    r.set(DomainElement.of(2, 1), 0.3)
+    r.set(DomainElement.of(2, 3), 0.5)
+    r.set(DomainElement.of(3, 2), 0.5)
+    r.set(DomainElement.of(3, 4), 0.2)
+    r.set(DomainElement.of(4, 3), 0.2)
+
+    r2 = r
+
+    print("Početna relacija je neizrazita relacija ekvivalencije? ", Relations.isFuzzyEquivalence(r2))
+
+    for i in range(3):
+        r2 = Relations.compositionOfBinaryRelations(r2, r)
+
+        print(f"Broj odrađenih kompozicija: {i}. Relacija je:")
+
+        for e in r2.getDomain():
+            print(f"m({e})={r2.getValueAt(e)}")
+
+        print("Ova relacija je neizrazita relacija ekvivalencije? ", Relations.isFuzzyEquivalence(r2))
+
+
