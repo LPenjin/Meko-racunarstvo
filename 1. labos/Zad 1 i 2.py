@@ -453,19 +453,23 @@ if __name__ == "__main__":
     d1 = Domain.intRange(0, 5)
     print(d1)
     print(f"Kardinalitet domene je: {d1.getCardinality()}")
+    print()
 
     d2 = Domain.intRange(0, 3)
     print(d2)
     print(f"Kardinalitet domene je: {d2.getCardinality()}")
+    print()
 
     d3 = Domain.combine(d1, d2)
     print(d3)
     print(f"Kardinalitet domene je: {d3.getCardinality()}")
+    print()
 
     print(d3.elementForIndex(0))
     print(d3.elementForIndex(5))
     print(d3.elementForIndex(14))
     print(d3.indexOfElement(DomainElement.of(4,1)))
+    print()
 
     #b)
     d = Domain.intRange(0, 11)
@@ -476,6 +480,7 @@ if __name__ == "__main__":
     set1.set(DomainElement.of(3), 0.4)
     set1.set(DomainElement.of(4), 0.2)
     print("Set1", set1)
+    print()
 
     d2_F = Domain.intRange(-5, 6)
     set2 = CalculatedFuzzySet(d2_F, StandardFuzzySets.lambdaFunction(
@@ -484,16 +489,20 @@ if __name__ == "__main__":
                 d2_F.indexOfElement(DomainElement.of(4))
                 ))
     print("Set2", set2)
+    print()
 
     #c)
     notSet1 = Operations.unaryOperation(set1, Operations.zadehNot())
     print("NotSet1", notSet1)
+    print()
 
     union = Operations.binaryOperation(set1, notSet1, Operations.zadehOr())
     print("Union", union)
+    print()
 
     hinters = Operations.binaryOperation(set1, notSet1, Operations.hamacherTNorm(1.0))
     print("Set1 intersection with notSet1 using parameterised Hamacher T norm with parameter 1.0:", hinters)
+    print()
 
     #2. zadatak
     #a)
@@ -566,6 +575,8 @@ if __name__ == "__main__":
     test7 = Relations.isMaxMinTransitive(r4)
     print("r4 je tranzitivan", test7)
 
+    print()
+
     #b)
     u1 = Domain.intRange(1, 5)
     u2 = Domain.intRange(1, 4)
@@ -589,6 +600,7 @@ if __name__ == "__main__":
 
     for e in r1r2.getDomain():
         print(f"m({e})={r1r2.getValueAt(e)}")
+    print()
 
     #c)
     u = Domain.intRange(1, 5)
@@ -618,5 +630,6 @@ if __name__ == "__main__":
             print(f"m({e})={r2.getValueAt(e)}")
 
         print("Ova relacija je neizrazita relacija ekvivalencije? ", Relations.isFuzzyEquivalence(r2))
+        print()
 
 
