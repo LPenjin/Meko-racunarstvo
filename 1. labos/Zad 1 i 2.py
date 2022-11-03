@@ -631,5 +631,3 @@ if __name__ == "__main__":
 
         print("Ova relacija je neizrazita relacija ekvivalencije? ", Relations.isFuzzyEquivalence(r2))
         print()
-
-
