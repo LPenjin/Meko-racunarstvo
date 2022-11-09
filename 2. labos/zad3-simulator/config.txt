@@ -1,0 +1,2 @@
+python Zad3.py
+1
